@@ -17,7 +17,6 @@ from threading import Thread
 
 import requests
 
-from daemonize import Daemon
 from settings import (
     traps1,
     traps2,
@@ -30,6 +29,7 @@ from settings import (
     IP,
     PORT
 )
+from utils.daemonize import Daemon
 
 """
     Run without parameters to debug open-falcon
