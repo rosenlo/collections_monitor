@@ -58,7 +58,7 @@ class Daemon(object):
         # 注册退出函数，根据文件pid判断是否存在进程
         atexit.register(self.delpid)
         pid = str(os.getpid())
-        open(self.pidfile, 'w+').write('%s\n'.format(pid))
+        open(self.pidfile, 'w+').write('{}\n'.format(pid))
 
     def delpid(self):
         os.remove(self.pidfile)
@@ -121,3 +121,4 @@ class Daemon(object):
 
 if __name__ == '__main__':
     pass
+

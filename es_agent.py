@@ -100,7 +100,7 @@ class MyDaemon(Daemon):
 def write_log(out=None):
     if out is None:
         out = []
-    sys.stdout.write("{date} -  metrics: {num}\n}".format(date=datetime.datetime.now(), num=str(len(out))))
+    sys.stdout.write("{date} -  metrics: {num}\n".format(date=datetime.datetime.now(), num=str(len(out))))
     sys.stdout.flush()
 
 
