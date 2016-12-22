@@ -50,14 +50,15 @@ def es_data(endpoint, metric, timestamp, value, counterType, tags):
 
 
 # read specified keys from json data
-def get_keys(stats, traps):
+def get_keys(stats, traps, ts):
     tags = []
     data = []
     temp = stats.get('attributes', {})
-    ts = int(time.time())
+
     for i in temp:
         tags.append(i + '=' + temp.get(i, ''))
     tags = ','.join(tags)
+
     for t in traps:
         if t == 'status':
             value = stats.get(t, '')
@@ -112,6 +113,7 @@ def main():
         health = f.json()
         f = requests.get("http://{IP}:{PORT}/_nodes/_local/stats?all=true".format(IP=IP, PORT=PORT))
         all = f.json()
+        ts = int(time.time())
         # only for current node
         for node_id in all.get('nodes', {}).keys():
             if all['nodes'][node_id]['host'].startswith(IP):
@@ -123,8 +125,8 @@ def main():
         print(e.__str__() + "and Unable to load JSON data!")
         sys.exit(1)
 
-    out = get_keys(health, traps1)  # getting health values
-    out.extend(get_keys(node, traps2))  # getting stats  values
+    out = get_keys(health, traps1, ts)  # getting health values
+    out.extend(get_keys(node, traps2, ts))  # getting stats  values
 
     t1 = Thread(target=write_log, args=(out,))
     t1.start()
