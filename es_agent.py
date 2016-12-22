@@ -13,6 +13,7 @@ from __future__ import print_function
 import datetime
 import sys
 import time
+from threading import Thread
 
 import requests
 
@@ -125,9 +126,9 @@ def main():
     out = get_keys(health, traps1)  # getting health values
     out.extend(get_keys(node, traps2))  # getting stats  values
 
-    write_log(out)
-
-    # os.remove(tmp)
+    t1 = Thread(target=write_log, args=(out,))
+    t1.start()
+    t1.join()
 
 
 if __name__ == "__main__":
