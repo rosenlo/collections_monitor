@@ -11,10 +11,11 @@ import socket
 
 pidfile = '/run/elasticsearch/es_agent.pid'
 stdout = '/data/log/elasticsearch/es_monitor.log'
-stderr = 'data/log/elasticsearch/es_monitor.err'
+stderr = '/data/log/elasticsearch/es_monitor.err'
 HOSTNAME = socket.gethostname()
 IP = socket.gethostbyname(HOSTNAME)
 PORT = 9200
+URL = 'http://127.0.0.1:1988/v1/push'
 
 # keys for health page
 traps1 = [
@@ -191,3 +192,4 @@ COUNTER = [
 
 if __name__ == '__main__':
     pass
+

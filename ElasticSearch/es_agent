@@ -10,14 +10,17 @@ Created Time: 12/21/16 14:34
 
 from __future__ import print_function
 
-import datetime
+import json
+import logging
+import os
 import sys
 import time
+from logging.handlers import TimedRotatingFileHandler
 from threading import Thread
 
 import requests
 
-from settings import (
+from conf.settings import (
     traps1,
     traps2,
     GAUGE,
@@ -27,23 +30,40 @@ from settings import (
     stdout,
     HOSTNAME,
     IP,
-    PORT
+    PORT,
+    URL
 )
 from utils.daemonize import Daemon
+from utils.logging_conf import logging_conf
 
 """
     Run without parameters to debug open-falcon
 """
 
+# log setting
+log_formatter = logging.Formatter('%(asctime)s;%(levelname)s;%(message)s')
 
-def es_data(endpoint, metric, timestamp, value, counterType, tags):
+# info log
+out_keep = TimedRotatingFileHandler(stdout, 'D', 1, 7)
+out_keep.setFormatter(log_formatter)
+es_logger_out = logging_conf(stdout).getLogger('es_agent_out')
+es_logger_out.addHandler(out_keep)
+
+# error log
+err_keep = TimedRotatingFileHandler(stderr, 'D', 1, 7)
+err_keep.setFormatter(log_formatter)
+es_logger_err = logging_conf(stderr).getLogger('es_agent_err')
+es_logger_err.addHandler(err_keep)
+
+
+def es_data(endpoint, metric, timestamp, value, counter_type, tags):
     structure = {
         'endpoint': endpoint,
         'metric': metric,
         'timestamp': timestamp,
         'step': 10,
         'value': value,
-        'counterType': counterType,
+        'counterType': counter_type,
         'tags': tags
     }
     return structure
@@ -51,23 +71,23 @@ def es_data(endpoint, metric, timestamp, value, counterType, tags):
 
 # read specified keys from json data
 def get_keys(stats, traps, ts):
-    tags = []
+    # tags = []
+    tags = ""
     data = []
-    temp = stats.get('attributes', {})
-
-    for i in temp:
-        tags.append(i + '=' + temp.get(i, ''))
-    tags = ','.join(tags)
+    # temp = stats.get('attributes', {})
+    # for i in temp:
+    #     tags.append(i + '=' + temp.get(i, ''))
+    # tags = ','.join(tags)
 
     for t in traps:
         if t == 'status':
             value = stats.get(t, '')
             if value == 'green':
-                stats[t] = 0
-            elif value == 'yellow':
                 stats[t] = 1
+            elif value == 'yellow':
+                stats[t] = -1
             elif value == 'red':
-                stats[t] = 2
+                stats[t] = 0
 
         c = t.split('.')
         s = stats
@@ -89,20 +109,22 @@ def get_keys(stats, traps, ts):
 class MyDaemon(Daemon):
     @staticmethod
     def run():
+        es_logger_out.info("Daemon started with pid %d! \n", os.getpid())
         while True:
-            start_time = time.time()
-            main()
-            end_time = time.time()
-            st = end_time - start_time
+            ts = main()
+            end_time = int(time.time())
+            st = end_time - ts
             sleep_time = 10 - st
             time.sleep(sleep_time)
 
 
-def write_log(out=None):
+def write_log(out=None, metrics=None):
     if out is None:
         out = []
-    sys.stdout.write("{date} -  metrics: {num}\n".format(date=datetime.datetime.now(), num=str(len(out))))
-    sys.stdout.flush()
+    if metrics is None:
+        metrics = []
+    es_logger_out.info("Delivery %d metrics %s! \n", metrics, out)
+    # sys.stdout.flush()
 
 
 def main():
@@ -112,25 +134,28 @@ def main():
         f = requests.get("http://{IP}:{PORT}/_cluster/health".format(IP=IP, PORT=PORT))
         health = f.json()
         f = requests.get("http://{IP}:{PORT}/_nodes/_local/stats?all=true".format(IP=IP, PORT=PORT))
-        all = f.json()
+        data = f.json()
         ts = int(time.time())
+
         # only for current node
-        for node_id in all.get('nodes', {}).keys():
-            if all['nodes'][node_id]['host'].startswith(IP):
-                node = all['nodes'][node_id]
+        for node_id in data.get('nodes', {}).keys():
+            if data['nodes'][node_id]['host'].startswith(IP):
+                node = data['nodes'][node_id]
                 if len(sys.argv) == 1:
-                    print("node found")
+                    es_logger_err.error("node found")
 
     except Exception as e:
-        print(e.__str__() + "and Unable to load JSON data!")
+        es_logger_err.error(e.__str__() + "and Unable to load JSON data!")
         sys.exit(1)
 
     out = get_keys(health, traps1, ts)  # getting health values
     out.extend(get_keys(node, traps2, ts))  # getting stats  values
+    r = requests.post(URL, data=json.dumps(out))
 
-    t1 = Thread(target=write_log, args=(out,))
+    t1 = Thread(target=write_log, args=(r.text, len(out)))
     t1.start()
     t1.join()
+    return ts
 
 
 if __name__ == "__main__":
@@ -146,7 +171,7 @@ if __name__ == "__main__":
         elif 'restart' == args[1]:
             myDaemon.restart()
         else:
-            print('*** Unknown command')
+            es_logger_err.error('*** Unknown command')
             sys.exit(2)
         sys.exit(0)
     else:

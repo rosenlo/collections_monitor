@@ -14,7 +14,10 @@ import atexit
 import os
 import sys
 import time
+from datetime import datetime
 from signal import SIGTERM
+
+from utils.logging_conf import logging_conf
 
 
 class Daemon(object):
@@ -23,6 +26,8 @@ class Daemon(object):
         self.stdout = stdout
         self.stderr = stderr
         self.pidfile = pidfile
+        self.es_logger_out = logging_conf(stdout).getLogger('es_agent')
+        self.es_logger_err = logging_conf(stderr).getLogger('es_agent')
 
     def _daemonize(self):
         try:
@@ -30,7 +35,7 @@ class Daemon(object):
             if pid > 0:
                 sys.exit(0)
         except OSError as e:
-            sys.stderr.write('For #1 failed: {} {} \n'.format(e.errno, e.strerror))
+            self.es_logger_err.error('For #1 failed: %s  %s \n', (e.errno, e.strerror))
             sys.exit(1)
 
         os.chdir("/")  # 修改工作目录
@@ -42,7 +47,7 @@ class Daemon(object):
             if pid > 0:
                 sys.exit(0)
         except OSError as e:
-            sys.stderr.write('Fork #2 failed: {} {}\n'.format(e.errno, e.strerror))
+            self.es_logger_err.error('Fork #2 failed: %s %s\n', (e.errno, e.strerror))
             sys.exit(1)
 
         # 重定向文件描述符
@@ -74,7 +79,7 @@ class Daemon(object):
 
         if pid:
             message = 'pidfile %s already exist. Daemon already running!\n'
-            sys.stderr.write(message % self.pidfile)
+            self.es_logger_err.error(message, self.pidfile)
             sys.exit(1)
 
             # 启动监控
@@ -87,12 +92,14 @@ class Daemon(object):
             pf = open(self.pidfile, 'r')
             pid = int(pf.read().strip())
             pf.close()
+            message = 'es_agent will be stop...\n}'
+            self.es_logger_out.debug(message)
         except IOError:
             pid = None
 
         if not pid:  # 重启不报错
-            message = 'pidfile %s does not exist. Daemon not running!\n'
-            sys.stderr.write(message % self.pidfile)
+            message = 'pid file %s does not exist. Daemon not running!\n'
+            self.es_logger_err.error(message.format(self.pidfile))
             return
 
             # 杀进程
@@ -106,7 +113,7 @@ class Daemon(object):
                 if os.path.exists(self.pidfile):
                     os.remove(self.pidfile)
             else:
-                print(str(err))
+                self.es_logger_err.error(str(err))
                 sys.exit(1)
 
     def restart(self):
@@ -121,4 +128,3 @@ class Daemon(object):
 
 if __name__ == '__main__':
     pass
-
