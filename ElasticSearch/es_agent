@@ -37,7 +37,8 @@ from utils.daemonize import Daemon
 from utils.logging_conf import logging_conf
 
 """
-    Run without parameters to debug open-falcon
+    The state information is obtained by calling the API
+    provided by ElasticSearch and send it to open-falcon.
 """
 
 # log setting

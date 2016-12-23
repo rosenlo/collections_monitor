@@ -1,2 +1,2 @@
 # collections_monitor
-Some monitor collections
+Some monitor collections script do not use CollectD
