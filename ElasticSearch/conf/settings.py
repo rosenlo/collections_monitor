@@ -119,6 +119,7 @@ GAUGE = [
     "jvm.buffer_pools.mapped.total_capacity_in_bytes",
     "jvm.buffer_pools.mapped.used_in_bytes",
     "jvm.gc.collectors.old.ollection_count",
+    "jvm.gc.collectors.old.collection_time_in_millis",
     "jvm.gc.collectors.young.collection_time_in_millis",
     "jvm.gc.collectors.young.ollection_count",
     "jvm.mem.heap_committed_in_bytes",

@@ -42,17 +42,17 @@ from utils.logging_conf import logging_conf
 """
 
 # log setting
-log_formatter = logging.Formatter('%(asctime)s;%(levelname)s;%(message)s')
+# log_formatter = logging.Formatter('%(asctime)s;%(levelname)s;%(message)s')
 
 # info log
 out_keep = TimedRotatingFileHandler(stdout, 'D', 1, 7)
-out_keep.setFormatter(log_formatter)
+# out_keep.setFormatter(log_formatter)
 es_logger_out = logging_conf(stdout).getLogger('es_agent_out')
 es_logger_out.addHandler(out_keep)
 
 # error log
 err_keep = TimedRotatingFileHandler(stderr, 'D', 1, 7)
-err_keep.setFormatter(log_formatter)
+# err_keep.setFormatter(log_formatter)
 es_logger_err = logging_conf(stderr).getLogger('es_agent_err')
 es_logger_err.addHandler(err_keep)
 

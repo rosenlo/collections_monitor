@@ -99,7 +99,7 @@ class Daemon(object):
 
         if not pid:  # 重启不报错
             message = 'pid file %s does not exist. Daemon not running!\n'
-            self.es_logger_err.error(message.format(self.pidfile))
+            self.es_logger_err.error(message, self.pidfile)
             return
 
             # 杀进程
