@@ -26,8 +26,8 @@ class Daemon(object):
         self.stdout = stdout
         self.stderr = stderr
         self.pidfile = pidfile
-        self.es_logger_out = logging_conf(stdout).getLogger('es_agent')
-        self.es_logger_err = logging_conf(stderr).getLogger('es_agent')
+        self.es_logger_out = logging_conf(stdout).getLogger('es_agent_out')
+        self.es_logger_err = logging_conf(stderr).getLogger('es_agent_err')
 
     def _daemonize(self):
         try:
@@ -92,8 +92,8 @@ class Daemon(object):
             pf = open(self.pidfile, 'r')
             pid = int(pf.read().strip())
             pf.close()
-            message = 'es_agent will be stop...\n}'
-            self.es_logger_out.debug(message)
+            message = 'es_agent will be stop...\n'
+            self.es_logger_out.info(message)
         except IOError:
             pid = None
 
@@ -122,7 +122,6 @@ class Daemon(object):
 
     @staticmethod
     def run():
-        """ run your fun"""
         pass
 
 

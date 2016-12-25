@@ -8,7 +8,9 @@ File: settings.py
 Created Time: 12/22/16 12:05
 """
 import socket
+from multiprocessing import Pool
 
+multi_pool = Pool(2)
 pidfile = '/run/elasticsearch/es_agent.pid'
 stdout = '/data/log/elasticsearch/es_monitor.log'
 stderr = '/data/log/elasticsearch/es_monitor.err'
@@ -16,6 +18,11 @@ HOSTNAME = socket.gethostname()
 IP = socket.gethostbyname(HOSTNAME)
 PORT = 9200
 URL = 'http://127.0.0.1:1988/v1/push'
+
+STATSD_SERVER = {
+    'host': 'qc-statsd.elenet.me',
+    'port': 8125
+}
 
 # keys for health page
 traps1 = [
@@ -100,8 +107,13 @@ traps2 = {
     "jvm.buffer_pools.mapped.count",
     "jvm.buffer_pools.mapped.total_capacity_in_bytes",
     "jvm.buffer_pools.mapped.used_in_bytes",
-    "os.mem.actual_free_in_bytes",
-    "os.mem.actual_used_in_bytes"
+    "os.mem.used_in_bytes",
+    "os.mem.total_in_bytes",
+    "os.mem.free_in_bytes",
+    "os.mem.free_percent",
+    "os.mem.used_percent",
+    "os.cpu_percent",
+    "os.load_average"
 }
 
 GAUGE = [
@@ -144,8 +156,13 @@ GAUGE = [
     "jvm_heap_p_of_RAM",
     "jvm_heap_p_used",
     "jvm.uptime_in_millis",
-    "os.mem.actual_free_in_bytes",
-    "os.mem.actual_used_in_bytes",
+    "os.mem.used_in_bytes",
+    "os.mem.total_in_bytes",
+    "os.mem.free_in_bytes",
+    "os.mem.free_percent",
+    "os.mem.used_percent",
+    "os.cpu_percent",
+    "os.load_average",
     "process.cpu.percent",
     "process.cpu.sys_in_millis",
     "process.cpu.total_in_millis",
@@ -193,4 +210,3 @@ COUNTER = [
 
 if __name__ == '__main__':
     pass
-

@@ -11,14 +11,14 @@ Created Time: 12/21/16 14:34
 from __future__ import print_function
 
 import json
-import logging
 import os
 import sys
 import time
 from logging.handlers import TimedRotatingFileHandler
-from threading import Thread
+from multiprocessing import Process, Queue
 
 import requests
+import statsd
 
 from conf.settings import (
     traps1,
@@ -31,14 +31,15 @@ from conf.settings import (
     HOSTNAME,
     IP,
     PORT,
-    URL
+    URL,
+    STATSD_SERVER
 )
 from utils.daemonize import Daemon
 from utils.logging_conf import logging_conf
 
 """
     The state information is obtained by calling the API
-    provided by ElasticSearch and send it to open-falcon.
+    provided by ElasticSearch and send it to open falcon.
 """
 
 # log setting
@@ -56,6 +57,8 @@ err_keep = TimedRotatingFileHandler(stderr, 'D', 1, 7)
 es_logger_err = logging_conf(stderr).getLogger('es_agent_err')
 es_logger_err.addHandler(err_keep)
 
+q = Queue(10)
+
 
 def es_data(endpoint, metric, timestamp, value, counter_type, tags):
     structure = {
@@ -72,25 +75,22 @@ def es_data(endpoint, metric, timestamp, value, counter_type, tags):
 
 # read specified keys from json data
 def get_keys(stats, traps, ts):
-    # tags = []
+    stats_data_gauge = {}
+    stats_data_timer = {}
     tags = ""
-    data = []
-    # temp = stats.get('attributes', {})
-    # for i in temp:
-    #     tags.append(i + '=' + temp.get(i, ''))
-    # tags = ','.join(tags)
+    falcon_data = []
 
-    for t in traps:
-        if t == 'status':
-            value = stats.get(t, '')
+    for key in traps:
+        if key == 'status':
+            value = stats.get(key, '')
             if value == 'green':
-                stats[t] = 1
+                stats[key] = 1
             elif value == 'yellow':
-                stats[t] = -1
+                stats[key] = 2
             elif value == 'red':
-                stats[t] = 0
+                stats[key] = 0
 
-        c = t.split('.')
+        c = key.split('.')
         s = stats
         while len(c):
             s = s.get(c.pop(0), {})
@@ -98,13 +98,15 @@ def get_keys(stats, traps, ts):
         if s == {}:
             continue
 
-        metric = 'es.' + t
-        if t in GAUGE:
-            data.append(es_data(HOSTNAME, metric, ts, s, 'GAUGE', tags))
-        elif t in COUNTER:
-            data.append(es_data(HOSTNAME, metric, ts, s, 'COUNTER', tags))
+        metric = 'es.' + key
+        if key in GAUGE:
+            falcon_data.append(es_data(HOSTNAME, metric, ts, s, 'GAUGE', tags))
+            stats_data_gauge[key] = s
+        elif key in COUNTER:
+            falcon_data.append(es_data(HOSTNAME, metric, ts, s, 'COUNTER', tags))
+            stats_data_timer[key] = s
 
-    return data
+    return falcon_data, stats_data_gauge, stats_data_timer
 
 
 class MyDaemon(Daemon):
@@ -112,11 +114,11 @@ class MyDaemon(Daemon):
     def run():
         es_logger_out.info("Daemon started with pid %d! \n", os.getpid())
         while True:
-            ts = main()
-            end_time = int(time.time())
-            st = end_time - ts
-            sleep_time = 10 - st
-            time.sleep(sleep_time)
+            if int(time.time()) % 10 == 0:
+                p = Process(target=main)
+                p.start()
+                p.join()
+                time.sleep(1)
 
 
 def write_log(out=None, metrics=None):
@@ -125,23 +127,52 @@ def write_log(out=None, metrics=None):
     if metrics is None:
         metrics = []
     es_logger_out.info("Delivery %d metrics %s! \n", metrics, out)
-    # sys.stdout.flush()
+
+
+def send_to_falcon(url=None, data=None):
+    if data and url:
+        res = requests.post(URL, data=json.dumps(data))
+        return res
+
+
+def send_to_statsd(statsd_client=None, data=None, gauge=False, timer=False):
+    try:
+        if data and gauge:
+            for k, v in data.items():
+                statsd_client.gauge(k, v)
+        if data and timer:
+            for k, v in data.items():
+                statsd_client.timing(k, v)
+            if q.empty():
+                q.put(data)
+    except Exception as e:
+        es_logger_err.error(e.__str__())
+
+
+def timer_to_gauge(data=None):
+    counter_stats_data = {}
+    if not q.empty():
+        old_stats_data = q.get()
+        for k in data:
+            counter_stats_data[k] = (data[k] - old_stats_data[k]) / 10
+        return counter_stats_data
+    else:
+        return data
 
 
 def main():
     # load json data
     node = {}
     try:
-        f = requests.get("http://{IP}:{PORT}/_cluster/health".format(IP=IP, PORT=PORT))
-        health = f.json()
-        f = requests.get("http://{IP}:{PORT}/_nodes/_local/stats?all=true".format(IP=IP, PORT=PORT))
-        data = f.json()
-        ts = int(time.time())
-
+        health_res = requests.get("http://{IP}:{PORT}/_cluster/health".format(IP=IP, PORT=PORT))
+        stats_res = requests.get("http://{IP}:{PORT}/_nodes/_local/stats?all=true".format(IP=IP, PORT=PORT))
+        data_time = int(time.time())
+        health = health_res.json()
+        stats = stats_res.json()
         # only for current node
-        for node_id in data.get('nodes', {}).keys():
-            if data['nodes'][node_id]['host'].startswith(IP):
-                node = data['nodes'][node_id]
+        for node_id in stats.get('nodes', {}).keys():
+            if stats['nodes'][node_id]['host'].startswith(IP):
+                node = stats['nodes'][node_id]
                 if len(sys.argv) == 1:
                     es_logger_err.error("node found")
 
@@ -149,14 +180,24 @@ def main():
         es_logger_err.error(e.__str__() + "and Unable to load JSON data!")
         sys.exit(1)
 
-    out = get_keys(health, traps1, ts)  # getting health values
-    out.extend(get_keys(node, traps2, ts))  # getting stats  values
-    r = requests.post(URL, data=json.dumps(out))
+    statsd_client = statsd.StatsClient(STATSD_SERVER['host'], STATSD_SERVER['port'], health['cluster_name'])
 
-    t1 = Thread(target=write_log, args=(r.text, len(out)))
-    t1.start()
-    t1.join()
-    return ts
+    # out = get_keys(health, traps1, data_time)  # getting health values
+    # out.extend(get_keys(node, traps2, data_time))  # getting stats  values
+    falcon_data, stats_data_gauge1, stats_data_timer1 = get_keys(health, traps1, data_time)  # getting health values
+    falcon_data2, stats_data_gauge2, stats_data_timer2 = get_keys(node, traps2, data_time)  # getting stats values
+
+    # converging of metrics
+    falcon_data.extend(falcon_data2)
+    stats_data_gauge = dict(stats_data_gauge1, **stats_data_gauge2)
+    stats_data_timer = dict(stats_data_timer1, **stats_data_timer2)
+    stats_data_timer = timer_to_gauge(stats_data_timer)
+
+    res = send_to_falcon(URL, falcon_data)
+    send_to_statsd(statsd_client, stats_data_gauge, gauge=True)
+    send_to_statsd(statsd_client, stats_data_timer, timer=True)
+
+    write_log(res.text, len(falcon_data))
 
 
 if __name__ == "__main__":
